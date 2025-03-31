@@ -18,7 +18,7 @@ Go-CRUD是一个轻量级、高效的Go语言CRUD框架，专为快速开发REST
 ## 📦 安装
 
 ```bash
-go get github.com/your-username/go-crud
+go get github.com/polaris0915/go-crud
 ```
 
 ## 🚀 快速开始
@@ -28,7 +28,7 @@ package main
 
 import (
     "github.com/gin-gonic/gin"
-    "github.com/your-username/go-crud"
+    "github.com/polaris0915/go-crud"
     "gorm.io/driver/mysql"
     "gorm.io/gorm"
 )
