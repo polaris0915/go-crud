@@ -55,7 +55,7 @@ func (c *Core[T]) Get() {
 	// 执行前置钩子
 	if c.beforeHook != nil {
 		// TODO
-		if err := c.beforeHook(nil); err != nil {
+		if err := c.beforeHook(c); err != nil {
 			c.err = cError.New(cError.ErrReadHookFailure, nil, errors.New("查询前置钩子执行失败"))
 			return
 		}
@@ -132,7 +132,7 @@ func (c *Core[T]) Get() {
 	// 执行后置钩子
 	if c.afterHook != nil {
 		// TODO
-		if err := c.afterHook(nil); err != nil {
+		if err := c.afterHook(c); err != nil {
 			c.err = cError.New(cError.ErrReadHookFailure, "查询后置钩子执行失败", err)
 			return
 		}

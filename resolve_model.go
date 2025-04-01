@@ -1,3 +1,4 @@
+// Package crud
 package crud
 
 import (
@@ -67,7 +68,7 @@ func deepResolve(r *RegisteredModel, m reflect.Type) {
 		}
 
 		//if modelFields.CrudTag != "" {
-		//	r.Rules[modelFields.JsonTag] = modelFields.CrudTag
+		//	r.rules[modelFields.JsonTag] = modelFields.CrudTag
 		//}
 
 		// 根据binding:"partial_update"标签，解析出部分更新时所涉及到的字段

@@ -35,7 +35,7 @@ func (c *Core[T]) Delete() {
 
 	// 3. 执行前置钩子（可用于权限检查和业务规则验证）
 	if c.beforeHook != nil {
-		if err := c.beforeHook(jsonModel); err != nil {
+		if err := c.beforeHook(c); err != nil {
 			c.err = cError.New(cError.ErrDeleteHookFailure, nil, errors.New("删除前置钩子函数执行失败"))
 			return
 		}
@@ -75,7 +75,7 @@ func (c *Core[T]) Delete() {
 
 	// 6. 执行后置钩子（可用于清理相关资源、发送通知等）
 	if c.afterHook != nil {
-		if err := c.afterHook(jsonModel); err != nil {
+		if err := c.afterHook(c); err != nil {
 			c.err = cError.New(cError.ErrDeleteHookFailure, nil, errors.New("删除后置钩子函数执行失败"))
 			return
 		}

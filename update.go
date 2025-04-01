@@ -80,7 +80,7 @@ func (c *Core[T]) Update() {
 	// 7. 执行更新操作
 	// 调用前置钩子（如果有）
 	if c.beforeHook != nil {
-		if err := c.beforeHook(jsonMap); err != nil {
+		if err := c.beforeHook(c); err != nil {
 			c.err = cError.New(cError.ErrUpdateHookFailure, nil, errors.New("更新前置钩子函数执行失败"))
 			return
 		}
@@ -141,7 +141,7 @@ func (c *Core[T]) Update() {
 
 	// 调用后置钩子（如果有）
 	if c.afterHook != nil {
-		if err := c.afterHook(jsonMap); err != nil {
+		if err := c.afterHook(c); err != nil {
 			c.err = cError.New(cError.ErrUpdateHookFailure, nil, errors.New("更新后置钩子函数执行失败"))
 			return
 		}

@@ -8,8 +8,8 @@ import (
 )
 
 func (c *Core[T]) Create() {
-	// 1. 获取新的模型T的对象
-	jsonModel := c.getModel()
+	//// 1. 获取新的模型T的对象
+	//jsonModel := c.getModel()
 
 	// 3. 绑定请求数据
 	if err := c.ginCtx.ShouldBindJSON(&c.payload); err != nil {
@@ -26,7 +26,7 @@ func (c *Core[T]) Create() {
 	}
 
 	// 4. 检查唯一性约束
-	if err := checkUniqueness(func() CModel { return jsonModel }, c.payload); err != nil {
+	if err := checkUniqueness(func() CModel { return c.getModel() }, c.payload); err != nil {
 		// 数据重复
 		if errors.Is(err, errDataDuplicated) {
 			c.err = cError.New(cError.ErrCreateDuplicate, nil, errDataDuplicated)
@@ -37,7 +37,7 @@ func (c *Core[T]) Create() {
 		return
 	}
 
-	err := weakDecode(c.payload, &jsonModel)
+	err := weakDecode(c.payload, &c.model)
 	if err != nil {
 		c.err = cError.New(cError.ErrCreateGeneral, nil, err)
 		return
@@ -45,7 +45,7 @@ func (c *Core[T]) Create() {
 
 	// 创建前置钩子
 	if c.beforeHook != nil {
-		if err := c.beforeHook(jsonModel); err != nil {
+		if err := c.beforeHook(c); err != nil {
 			c.err = cError.New(cError.ErrCreateHookFailure, nil, errors.New("创建前置钩子函数执行失败"))
 			return
 		}
@@ -69,7 +69,7 @@ func (c *Core[T]) Create() {
 	}
 
 	// 执行创建操作
-	result := tx.Create(jsonModel)
+	result := tx.Create(c.model)
 	if result.Error != nil {
 		c.err = cError.New(cError.ErrCreateGeneral, nil, result.Error)
 		return
@@ -77,7 +77,7 @@ func (c *Core[T]) Create() {
 
 	// 后置钩子
 	if c.afterHook != nil {
-		if err := c.afterHook(jsonModel); err != nil {
+		if err := c.afterHook(c); err != nil {
 			c.err = cError.New(cError.ErrCreateHookFailure, nil, errors.New("更新后置钩子函数执行失败"))
 			return
 		}

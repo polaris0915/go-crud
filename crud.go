@@ -13,6 +13,8 @@ type ICrud interface {
 	Create() []gin.HandlerFunc
 	Delete() []gin.HandlerFunc
 	Update() []gin.HandlerFunc
+	Get() []gin.HandlerFunc
+	GetList() []gin.HandlerFunc
 }
 
 // Crud
@@ -27,10 +29,7 @@ type Crud[T CModel] struct {
 
 func newCrud[T CModel](getModel func() T, opts ...Option) *Crud[T] {
 	// 默认配置
-	config := Config{
-		// 默认不开启事务
-		EnableTransaction: false,
-	}
+	config := Config{}
 
 	// 配置创建 删除 修改 查询的钩子函数以及额外的配置等
 	for _, opt := range opts {
@@ -54,13 +53,13 @@ func (c *Crud[T]) Create() (ginHandlers []gin.HandlerFunc) {
 		func(ginCtx *gin.Context) {
 			// 实例化核心对象
 			core := NewCore[T](
-				ginCtx, c.GetModel, c.config.EnableTransaction,
-				c.config.BeforeCreate, c.config.AfterCreate,
-				getModelMeta(c.GetModel().TableName()).Rules["create"],
+				ginCtx, c.GetModel, // 根据c.config来配置路由
+				c.config.BeforeCreate, c.config.AfterCreate, // 创建前置钩子，猴子钩子
+				getModelMeta(c.GetModel().TableName()).Rules["create"], // 校验规则
 			)
 			// 执行创建函数
 			core.Create()
-			// 如果有错误，组件错误响应
+			// 如果有错误，组织错误响应
 			if core.err != nil {
 				ginCtx.JSON(core.err.HttpStatus, gin.H{
 					"code":    core.err.Code,
@@ -83,13 +82,13 @@ func (c *Crud[T]) Delete() (ginHandlers []gin.HandlerFunc) {
 		func(ginCtx *gin.Context) {
 			// 实例化核心对象
 			core := NewCore[T](
-				ginCtx, c.GetModel, c.config.EnableTransaction,
+				ginCtx, c.GetModel,
 				c.config.BeforeDelete, c.config.AfterDelete,
 				getModelMeta(c.GetModel().TableName()).Rules["delete"],
 			)
 			// 执行创建函数
 			core.Delete()
-			// 如果有错误，组件错误响应
+			// 如果有错误，组织错误响应
 			if core.err != nil {
 				ginCtx.JSON(core.err.HttpStatus, gin.H{
 					"code":    core.err.Code,
@@ -112,13 +111,13 @@ func (c *Crud[T]) Update() (ginHandlers []gin.HandlerFunc) {
 		func(ginCtx *gin.Context) {
 			// 实例化核心对象
 			core := NewCore[T](
-				ginCtx, c.GetModel, c.config.EnableTransaction,
+				ginCtx, c.GetModel,
 				c.config.BeforeUpdate, c.config.AfterUpdate,
 				getModelMeta(c.GetModel().TableName()).Rules["update"],
 			)
 			// 执行创建函数
 			core.Update()
-			// 如果有错误，组件错误响应
+			// 如果有错误，组织错误响应
 			if core.err != nil {
 				ginCtx.JSON(core.err.HttpStatus, gin.H{
 					"code":    core.err.Code,
@@ -140,13 +139,41 @@ func (c *Crud[T]) Get() (ginHandlers []gin.HandlerFunc) {
 		func(ginCtx *gin.Context) {
 			// 实例化核心对象
 			core := NewCore[T](
-				ginCtx, c.GetModel, c.config.EnableTransaction,
+				ginCtx, c.GetModel,
 				c.config.BeforeGet, c.config.AfterGet,
 				getModelMeta(c.GetModel().TableName()).Rules["get"],
 			)
 			// 执行创建函数
 			core.Get()
-			// 如果有错误，组件错误响应
+			// 如果有错误，组织错误响应
+			if core.err != nil {
+				ginCtx.JSON(core.err.HttpStatus, gin.H{
+					"code":    core.err.Code,
+					"message": core.err.Message,
+				})
+				return
+			}
+		})
+	return ginHandlers
+}
+
+func (c *Crud[T]) GetList() (ginHandlers []gin.HandlerFunc) {
+	//var ginHandlers []gin.HandlerFunc
+	// 添加路由中间件
+	ginHandlers = append(ginHandlers, c.config.GetListMiddlewares...)
+	// 添加实际路由执行函数
+	ginHandlers = append(
+		ginHandlers,
+		func(ginCtx *gin.Context) {
+			// 实例化核心对象
+			core := NewCore[T](
+				ginCtx, c.GetModel,
+				c.config.BeforeGetList, c.config.AfterGetList,
+				getModelMeta(c.GetModel().TableName()).Rules["get"],
+			)
+			// 执行创建函数
+			core.GetList()
+			// 如果有错误，组织错误响应
 			if core.err != nil {
 				ginCtx.JSON(core.err.HttpStatus, gin.H{
 					"code":    core.err.Code,

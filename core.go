@@ -5,11 +5,19 @@ import (
 	"github.com/polaris0915/go-crud/cError"
 )
 
+type ICore interface {
+	GetPayload() map[string]interface{}
+	GetRules() map[string]interface{}
+	SetTransaction(bool)
+	GetModel() CModel
+}
+
 type Core[T CModel] struct {
 	// gin的Context上下文
 	ginCtx *gin.Context
 	// 具体模型工厂函数
 	getModel func() T
+	model    T
 	// 当前请求的错误，如果最终错误不为空，就会返回错误
 	err *cError.Error
 	// 是否开启事务
@@ -28,7 +36,7 @@ type Core[T CModel] struct {
 
 // NewCore 实例化最终操作对象
 func NewCore[T CModel](
-	ginCtx *gin.Context, getModel func() T, enableTransaction bool,
+	ginCtx *gin.Context, getModel func() T,
 	beforeHook HookFunc, afterHook HookFunc,
 	rules map[string]interface{},
 ) (c *Core[T]) {
@@ -36,7 +44,8 @@ func NewCore[T CModel](
 	c = &Core[T]{
 		ginCtx:            ginCtx,
 		getModel:          getModel,
-		enableTransaction: enableTransaction,
+		model:             getModel(),
+		enableTransaction: false,
 
 		beforeHook: beforeHook,
 		afterHook:  afterHook,
@@ -44,6 +53,22 @@ func NewCore[T CModel](
 		rules:      rules,
 	}
 	return
+}
+
+func (c *Core[T]) GetPayload() map[string]interface{} {
+	return c.payload
+}
+
+func (c *Core[T]) GetRules() map[string]interface{} {
+	return c.rules
+}
+
+func (c *Core[T]) SetTransaction(enableTransaction bool) {
+	c.enableTransaction = enableTransaction
+}
+
+func (c *Core[T]) GetModel() CModel {
+	return c.model
 }
 
 // HandleRes 全局响应处理函数
