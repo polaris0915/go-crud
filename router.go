@@ -46,4 +46,5 @@ func registerRoutes[T CModel](group *gin.RouterGroup, preSuffix string, crud *Cr
 	group.DELETE("/"+preSuffix+"/:id", crud.Delete()...)
 	group.PATCH("/"+preSuffix+"/:id", crud.Update()...)
 	group.GET("/"+preSuffix+"/:id", crud.Get()...)
+	group.GET("/"+preSuffix+"", crud.GetList()...)
 }
