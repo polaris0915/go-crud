@@ -7,6 +7,7 @@ require (
 	github.com/go-playground/validator/v10 v10.26.0
 	github.com/iancoleman/strcase v0.3.0
 	github.com/mitchellh/mapstructure v1.5.0
+	github.com/polaris0915/go-crud v0.1.0
 	github.com/spf13/cast v1.7.1
 	gorm.io/gorm v1.25.12
 )
