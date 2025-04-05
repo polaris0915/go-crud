@@ -11,9 +11,15 @@ import (
 	"time"
 )
 
+var localFileStorage *LocalFileStorage
+
+func GetFileStorage() *LocalFileStorage {
+	return localFileStorage
+}
+
 // FileStorage 文件存储接口
 type FileStorage interface {
-	Save(file *multipart.FileHeader, relatedID uint64, relatedType string, uploader uint64) (string, error)
+	Save(file *multipart.FileHeader, relateTypeID uint64, uploader uint64) (string, error)
 	Delete(path string) error
 	Get(path string) (*os.File, error)
 }
@@ -25,13 +31,14 @@ type LocalFileStorage struct {
 
 // NewLocalFileStorage 创建本地文件存储
 func NewLocalFileStorage(basePath string) *LocalFileStorage {
-	return &LocalFileStorage{
+	localFileStorage = &LocalFileStorage{
 		BasePath: basePath,
 	}
+	return localFileStorage
 }
 
 // Save 保存文件到本地存储
-func (s *LocalFileStorage) Save(file *multipart.FileHeader, relatedID uint64, relatedType string, uploader uint64) (string, error) {
+func (s *LocalFileStorage) Save(file *multipart.FileHeader, relateTypeID uint64, uploader uint64) (string, error) {
 	// 创建日期目录
 	now := time.Now()
 	datePath := now.Format("2006-01-02")
@@ -69,8 +76,8 @@ func (s *LocalFileStorage) Save(file *multipart.FileHeader, relatedID uint64, re
 	return filepath.Join("uploads", datePath, uniqueFileName), nil
 }
 
-// 在 LocalFileStorage 中添加一个验证路径的方法
-func (s *LocalFileStorage) validatePath(path string) error {
+// ValidatePath 在 LocalFileStorage 中添加一个验证路径的方法
+func (s *LocalFileStorage) ValidatePath(path string) error {
 	// 获取绝对路径
 	fullPath := filepath.Join(s.BasePath, path)
 	absPath, err := filepath.Abs(fullPath)
@@ -95,7 +102,7 @@ func (s *LocalFileStorage) validatePath(path string) error {
 // Delete 删除文件
 func (s *LocalFileStorage) Delete(path string) error {
 	// 验证路径
-	if err := s.validatePath(path); err != nil {
+	if err := s.ValidatePath(path); err != nil {
 		return err
 	}
 

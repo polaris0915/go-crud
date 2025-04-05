@@ -17,14 +17,13 @@ import (
 // fileStorage := file_storage.NewLocalFileStorage(storagePath)
 // RegisterFileApi
 
+// RegisterFileApi TODO storage file_storage.FileStorage参数貌似可以去掉
 func RegisterFileApi(r *gin.RouterGroup, storage file_storage.FileStorage, middlewares ...gin.HandlerFunc) {
 	// 迁移模型到mysql
-	if !model.Use().Migrator().HasTable(&model.File{}) {
-		err := model.Use().Migrator().AutoMigrate(&model.File{})
-		if err != nil {
-			panic("crud中的文件模型迁移失败")
-			return
-		}
+	err := model.Use().Migrator().AutoMigrate(&model.File{})
+	if err != nil {
+		panic("crud中的文件模型迁移失败")
+		return
 	}
 	fileController := NewFileController(storage)
 
@@ -32,10 +31,36 @@ func RegisterFileApi(r *gin.RouterGroup, storage file_storage.FileStorage, middl
 	{
 		fileGroup.POST("/upload", fileController.UploadHandler)
 		fileGroup.POST("/batch_upload", fileController.BatchUploadHandler)
-		fileGroup.DELETE("/:id", fileController.DeleteHandler)
+		fileGroup.DELETE("/:id", fileController.DeleteByFileID)
+		// /api/file?path=file_path
+		fileGroup.DELETE("/", fileController.DeleteByFilePath)
 		fileGroup.POST("/batch_delete", fileController.BatchDeleteHandler)
-		fileGroup.GET("/download/:id", fileController.DownloadHandler)
+		fileGroup.GET("/download/:id", fileController.DownloadByFileID)
+		fileGroup.GET("/download", fileController.DownloadByFilePath)
 	}
+
+	// 默认只有管理员可以操作文件业务类型
+	middlewares = append(middlewares, func(c *gin.Context) {
+		t, _ := c.Get("user_role")
+		userRole := t.(string)
+		if userRole != "admin" {
+			c.AbortWithStatusJSON(http.StatusForbidden, gin.H{
+				"code":    http.StatusForbidden,
+				"message": "不是管理员，不能操作文件业务类型",
+			})
+			return
+		}
+	})
+	RegisterModelApi[*model.RelateType](r, "relate_type",
+		BeforeCreate(func(core ICore) error {
+			jsonRelateType := core.GetModel().(*model.RelateType)
+			jsonRelateType.ID = model.NextID()
+			return nil
+		}),
+		CreateMiddlewares(middlewares...),
+		UpdateMiddlewares(middlewares...),
+		DeleteMiddlewares(middlewares...),
+	)
 
 }
 
@@ -67,8 +92,7 @@ func (fc *FileController) UploadHandler(c *gin.Context) {
 	}
 
 	// 获取相关实体信息（可选）
-	relatedID := cast.ToUint64(c.PostForm("related_id"))
-	relatedType := c.PostForm("related_type")
+	relateTypeID := cast.ToUint64(c.PostForm("relate_type_id"))
 
 	// 获取上传的文件
 	file, err := c.FormFile("file")
@@ -91,7 +115,7 @@ func (fc *FileController) UploadHandler(c *gin.Context) {
 	}
 
 	// 保存文件
-	filePath, err := fc.storage.Save(file, relatedID, relatedType, userID)
+	filePath, err := fc.storage.Save(file, relateTypeID, userID)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{
 			"code":    cError.ErrInternal,
@@ -107,17 +131,20 @@ func (fc *FileController) UploadHandler(c *gin.Context) {
 
 	// 创建文件记录
 	fileModel := model.File{
-		FileName:    filepath.Base(filePath),
-		DisplayName: file.Filename,
-		FileSize:    file.Size,
-		FileType:    fileType,
-		FilePath:    filePath,
-		Uploader:    userID,
-		RelatedID:   relatedID,
-		RelatedType: relatedType,
+		ID:           model.NextID(),
+		FileName:     filepath.Base(filePath),
+		DisplayName:  file.Filename,
+		FileSize:     uint64(file.Size),
+		FileType:     fileType,
+		FilePath:     filePath,
+		Uploader:     userID,
+		RelateTypeID: relateTypeID,
 	}
 
 	db := model.Use()
+	if relateTypeID == 0 {
+		db = db.Omit("relate_type_id")
+	}
 	if err := db.Create(&fileModel).Error; err != nil {
 		// 如果数据库创建失败，尝试删除已上传的文件
 		_ = fc.storage.Delete(filePath)
@@ -141,7 +168,9 @@ func (fc *FileController) UploadHandler(c *gin.Context) {
 // BatchUploadHandler 处理批量文件上传
 func (fc *FileController) BatchUploadHandler(c *gin.Context) {
 	// 从上下文中获取当前用户ID
-	userID := cast.ToUint64(c.GetInt64("user_id"))
+	//userID := cast.ToUint64(c.GetInt64("user_id"))
+	t, _ := c.Get("user_id")
+	userID := cast.ToUint64(t)
 	if userID == 0 {
 		c.JSON(http.StatusUnauthorized, gin.H{
 			"code":    cError.ErrUnauthorized,
@@ -151,8 +180,7 @@ func (fc *FileController) BatchUploadHandler(c *gin.Context) {
 	}
 
 	// 获取相关实体信息（可选）
-	relatedID := cast.ToUint64(c.PostForm("related_id"))
-	relatedType := c.PostForm("related_type")
+	relateTypeID := cast.ToUint64(c.PostForm("relate_type_id"))
 
 	// 获取上传的多个文件
 	form, err := c.MultipartForm()
@@ -200,7 +228,7 @@ func (fc *FileController) BatchUploadHandler(c *gin.Context) {
 		}
 
 		// 保存文件
-		filePath, err := fc.storage.Save(file, relatedID, relatedType, userID)
+		filePath, err := fc.storage.Save(file, relateTypeID, userID)
 		if err != nil {
 			db.Rollback()
 			// 清理已上传的文件
@@ -222,17 +250,20 @@ func (fc *FileController) BatchUploadHandler(c *gin.Context) {
 
 		// 创建文件记录
 		fileModel := model.File{
-			FileName:    filepath.Base(filePath),
-			DisplayName: file.Filename,
-			FileSize:    file.Size,
-			FileType:    fileType,
-			FilePath:    filePath,
-			Uploader:    userID,
-			RelatedID:   relatedID,
-			RelatedType: relatedType,
+			ID:           model.NextID(),
+			FileName:     filepath.Base(filePath),
+			DisplayName:  file.Filename,
+			FileSize:     uint64(file.Size),
+			FileType:     fileType,
+			FilePath:     filePath,
+			Uploader:     userID,
+			RelateTypeID: relateTypeID, // 注意这里的变化
 		}
 
 		// 保存到数据库
+		if relateTypeID == 0 {
+			db = db.Omit("relate_type_id")
+		}
 		if err := db.Create(&fileModel).Error; err != nil {
 			db.Rollback()
 			// 清理已上传的文件
@@ -276,8 +307,8 @@ func (fc *FileController) BatchUploadHandler(c *gin.Context) {
 	})
 }
 
-// DeleteHandler 处理文件删除
-func (fc *FileController) DeleteHandler(c *gin.Context) {
+// DeleteByFileID 处理文件删除
+func (fc *FileController) DeleteByFileID(c *gin.Context) {
 	// 获取文件ID
 	fileID := cast.ToUint64(c.Param("id"))
 	if fileID == 0 {
@@ -303,6 +334,105 @@ func (fc *FileController) DeleteHandler(c *gin.Context) {
 	var fileModel model.File
 	db := model.Use()
 	if err := db.First(&fileModel, fileID).Error; err != nil {
+		c.JSON(http.StatusNotFound, gin.H{
+			"code":    cError.ErrDeleteNotFound,
+			"message": "文件不存在",
+		})
+		return
+	}
+
+	// 可选：检查是否有删除权限(例如只能删除自己上传的文件)
+	if fileModel.Uploader != userID {
+		// 如果需要更严格的权限控制，可以在这里添加
+		// 例如，检查用户是否为管理员
+		t, _ := c.Get("user_role")
+		userRole := t.(string)
+		if userRole != "admin" {
+			c.JSON(http.StatusForbidden, gin.H{
+				"code":    cError.ErrDeletePermission,
+				"message": "没有权限删除此文件",
+			})
+			return
+		}
+	}
+
+	// 开启事务
+	tx := db.Begin()
+	if tx.Error != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{
+			"code":    cError.ErrDBTransaction,
+			"message": "开启事务失败",
+		})
+		return
+	}
+
+	// 删除数据库记录
+	if err := tx.Delete(&fileModel).Error; err != nil {
+		tx.Rollback()
+		c.JSON(http.StatusInternalServerError, gin.H{
+			"code":    cError.ErrDeleteGeneral,
+			"message": "删除文件记录失败",
+			"detail":  err.Error(),
+		})
+		return
+	}
+
+	// 删除物理文件
+	if err := fc.storage.Delete(fileModel.FilePath); err != nil {
+		tx.Rollback()
+		c.JSON(http.StatusInternalServerError, gin.H{
+			"code":    cError.ErrDeleteGeneral,
+			"message": "删除物理文件失败",
+			"detail":  err.Error(),
+		})
+		return
+	}
+
+	// 提交事务
+	if err := tx.Commit().Error; err != nil {
+		tx.Rollback()
+		c.JSON(http.StatusInternalServerError, gin.H{
+			"code":    cError.ErrDBTransaction,
+			"message": "提交事务失败",
+			"detail":  err.Error(),
+		})
+		return
+	}
+
+	// 返回成功响应
+	c.JSON(http.StatusOK, gin.H{
+		"code":    http.StatusOK,
+		"message": "文件删除成功",
+	})
+}
+
+// DeleteByFilePath 处理文件删除
+func (fc *FileController) DeleteByFilePath(c *gin.Context) {
+	// 获取文件ID
+	filePath := c.Query("path")
+	if filePath == "" {
+		c.JSON(http.StatusBadRequest, gin.H{
+			"code":    cError.ErrDeleteMissingField,
+			"message": "无效的文件路径",
+		})
+		return
+	}
+
+	// 检查用户权限
+	t, _ := c.Get("user_id")
+	userID := cast.ToUint64(t)
+	if userID == 0 {
+		c.JSON(http.StatusUnauthorized, gin.H{
+			"code":    cError.ErrUnauthorized,
+			"message": "用户未登录",
+		})
+		return
+	}
+
+	// 查询文件信息
+	var fileModel model.File
+	db := model.Use()
+	if err := db.Where("file_path = ?", filePath).First(&fileModel).Error; err != nil {
 		c.JSON(http.StatusNotFound, gin.H{
 			"code":    cError.ErrDeleteNotFound,
 			"message": "文件不存在",
@@ -539,8 +669,8 @@ func (fc *FileController) BatchDeleteHandler(c *gin.Context) {
 	})
 }
 
-// DownloadHandler 处理文件下载
-func (fc *FileController) DownloadHandler(c *gin.Context) {
+// DownloadByFileID 根据文件ID处理文件下载
+func (fc *FileController) DownloadByFileID(c *gin.Context) {
 	// 获取文件ID
 	fileID := cast.ToUint64(c.Param("id"))
 	if fileID == 0 {
@@ -579,6 +709,62 @@ func (fc *FileController) DownloadHandler(c *gin.Context) {
 
 	// 设置内容类型
 	contentType := getContentType(fileModel.FileType, filepath.Ext(fileModel.DisplayName))
+	c.Header("Content-Type", contentType)
+
+	// 发送文件
+	c.File(file.Name())
+}
+
+// DownloadByFilePath 根据文件路径处理文件下载
+func (fc *FileController) DownloadByFilePath(c *gin.Context) {
+	// 获取文件路径
+	filePath := c.Query("path")
+	if filePath == "" {
+		c.JSON(http.StatusBadRequest, gin.H{
+			"code":    cError.ErrReadInvalidID,
+			"message": "文件路径不能为空",
+		})
+		return
+	}
+
+	// 手动验证路径安全性
+	if strings.Contains(filePath, "..") || filepath.IsAbs(filePath) {
+		c.JSON(http.StatusForbidden, gin.H{
+			"code":    cError.ErrInvalidRequest,
+			"message": "非法的文件路径",
+		})
+		return
+	}
+
+	// 获取文件
+	file, err := fc.storage.Get(filePath)
+	if err != nil {
+		c.JSON(http.StatusNotFound, gin.H{
+			"code":    cError.ErrReadNotFound,
+			"message": "文件不存在",
+			"detail":  err.Error(),
+		})
+		return
+	}
+	defer file.Close()
+
+	// 获取文件信息
+	fileInfo, err := file.Stat()
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{
+			"code":    cError.ErrInternal,
+			"message": "获取文件信息失败",
+			"detail":  err.Error(),
+		})
+		return
+	}
+
+	// 设置文件名
+	c.Header("Content-Disposition", fmt.Sprintf("attachment; filename=%s", fileInfo.Name()))
+
+	// 设置内容类型
+	ext := filepath.Ext(fileInfo.Name())
+	contentType := getContentType(getFileType(ext), ext)
 	c.Header("Content-Type", contentType)
 
 	// 发送文件
